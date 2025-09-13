@@ -15,6 +15,8 @@ function App() {
   const [animation, setAnimation] = useState('');
   const [showAlgorithm, setShowAlgorithm] = useState(false);
   const [showComplexity, setShowComplexity] = useState(false);
+  const [minimaxIterations, setMinimaxIterations] = useState([]);
+  const [showIterations, setShowIterations] = useState(false);
 
   const API_BASE_URL = 'http://localhost:5000';
 
@@ -24,6 +26,10 @@ function App() {
     setIsLoading(true);
     setError(null);
     setThinkingProcess(["L'IA réfléchit à son prochain coup..."]);
+    
+    // Appel à simulateThinkingProcess
+    simulateThinkingProcess();
+
     try {
       const response = await fetch(`${API_BASE_URL}/move`, {
         method: 'POST',
@@ -42,7 +48,6 @@ function App() {
       setBoard(data.board);
       setWinner(data.winner || null);
       
-      // Mettre à jour les scores
       if (data.winner === 'X') {
         setScores(prev => ({ ...prev, player: prev.player + 1 }));
         setAnimation('player-win');
@@ -54,10 +59,8 @@ function App() {
         setAnimation('draw');
       }
 
-      // Simuler le processus de réflexion de l'IA
-      simulateThinkingProcess();
+      await fetchIterations();
       
-      // Ajouter à l'historique
       if (data.winner || data.board.every(cell => cell !== " ")) {
         setGameHistory(prev => [{
           board: [...data.board],
@@ -71,6 +74,18 @@ function App() {
       setError(error.message);
     }
     setIsLoading(false);
+  };
+
+  const fetchIterations = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/iterations`);
+      if (response.ok) {
+        const data = await response.json();
+        setMinimaxIterations(data.iterations || []);
+      }
+    } catch (error) {
+      console.error('Erreur lors de la récupération des itérations:', error);
+    }
   };
 
   const simulateThinkingProcess = () => {
@@ -101,6 +116,8 @@ function App() {
     setError(null);
     setThinkingProcess([]);
     setAnimation('');
+    setMinimaxIterations([]);
+    setShowIterations(false);
     try {
       const response = await fetch(`${API_BASE_URL}/reset`, {
         method: 'POST',
@@ -156,6 +173,80 @@ function App() {
     return `Tour: ${isLoading ? 'IA réfléchit...' : 'Votre tour (❌)'}`;
   };
 
+  const formatBoard = (boardArray) => {
+    if (!boardArray || !Array.isArray(boardArray)) return '';
+    
+    return (
+      <div className="iteration-board">
+        <div className="iteration-row">
+          {boardArray.slice(0, 3).map((cell, idx) => (
+            <div key={idx} className="iteration-cell">
+              {cell === 'X' ? '❌' : cell === 'O' ? '⭕' : '⬜'}
+            </div>
+          ))}
+        </div>
+        <div className="iteration-row">
+          {boardArray.slice(3, 6).map((cell, idx) => (
+            <div key={idx} className="iteration-cell">
+              {cell === 'X' ? '❌' : cell === 'O' ? '⭕' : '⬜'}
+            </div>
+          ))}
+        </div>
+        <div className="iteration-row">
+          {boardArray.slice(6, 9).map((cell, idx) => (
+            <div key={idx} className="iteration-cell">
+              {cell === 'X' ? '❌' : cell === 'O' ? '⭕' : '⬜'}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderIterations = () => {
+    if (!minimaxIterations || minimaxIterations.length === 0) {
+      return <p className="no-iterations">Aucune itération à afficher pour le moment.</p>;
+    }
+
+    return (
+      <div className="iterations-container">
+        <h3>Itérations de l'algorithme Minimax</h3>
+        <div className="iterations-list">
+          {minimaxIterations.map((iteration, index) => (
+            <div key={index} className="iteration-item">
+              <div className="iteration-header">
+                <span className="iteration-number">Itération #{index + 1}</span>
+                <span className="iteration-depth">Profondeur: {iteration.depth}</span>
+                <span className="iteration-type">
+                  {iteration.is_maximizing ? 'Maximisation (⭕)' : 'Minimisation (❌)'}
+                </span>
+              </div>
+              <div className="iteration-details">
+                <div className="iteration-board-container">
+                  {formatBoard(iteration.board)}
+                </div>
+                <div className="iteration-scores">
+                  <div className="iteration-score">
+                    <span className="score-label">Alpha:</span>
+                    <span className="score-value">{iteration.alpha}</span>
+                  </div>
+                  <div className="iteration-score">
+                    <span className="score-label">Bêta:</span>
+                    <span className="score-value">{iteration.beta}</span>
+                  </div>
+                  <div className="iteration-score">
+                    <span className="score-label">Score:</span>
+                    <span className="score-value">{iteration.score !== undefined ? iteration.score : 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const renderAlgorithmExplanation = () => (
     <div className="algorithm-explanation">
       <button 
@@ -166,47 +257,123 @@ function App() {
       </button>
       
       {showAlgorithm && (
-        <div className="algorithm-details">
-          <h3>Explication étape par étape de l'algorithme Min-Max</h3>
+        <div className="explanation">
+          <h2>🧠 Algorithme Min-Max avec Élagage Alpha-Bêta</h2>
           
-          <div className="algorithm-step">
-            <h4>Le plateau</h4>
-            <p>On utilise une liste de 9 cases.</p>
-            <div className="code-block">
-              <pre>'X' = MAX, 'O' = MIN, ' ' = case vide.</pre>
+          <div className="minimax-definition">
+            <h3>Algorithme Min-Max — Exemple détaillé (Tic-Tac-Toe / XO)</h3>
+            <p>Min-Max choisit le meilleur coup pour MAX (X) en supposant que MIN (O) joue optimalement.</p>
+
+            <div className="algorithm-step">
+              <h4>1. Définition du plateau</h4>
+              <p>Plateau : tableau de 9 cases (indices 0..8)</p>
+              <p>Disposition visuelle :</p>
+              <div className="code-block">
+                <pre>{`  0 | 1 | 2
+  ---------
+  3 | 4 | 5
+  ---------
+  6 | 7 | 8`}</pre>
+              </div>
+              <p>Valeurs : 'X' = MAX (ordinateur), 'O' = MIN (adversaire), ' ' = vide</p>
             </div>
-          </div>
-          
-          <div className="algorithm-step">
-            <h4>check_winner(board)</h4>
-            <p>Vérifie toutes les lignes, colonnes et diagonales pour voir qui a gagné.</p>
-            <div className="code-block">
-              <pre>Retourne 'X' si MAX gagne, 'O' si MIN gagne, 'Tie' si match nul, None sinon.</pre>
+
+            <div className="algorithm-step">
+              <h4>2. Vérifier le gagnant</h4>
+              <p>Fonction <code>check_gagnant(plateau)</code> :</p>
+              <div className="code-block">
+                <pre>{`  pour chaque combinaison gagnante (3 en ligne):
+      si les 3 cases contiennent 'X' → retourner "X"
+      si les 3 cases contiennent 'O' → retourner "O"
+  si aucune case vide → retourner "Match nul"
+  sinon → retourner "Aucun"  // partie non terminée`}</pre>
+              </div>
             </div>
-          </div>
-          
-          <div className="algorithm-step">
-            <h4>minimax(board, is_max)</h4>
-            <p>Cas de base : si quelqu'un a gagné ou si match nul, retourne le score.</p>
-            <p>Si c'est le tour de MAX (is_max=True) :</p>
-            <ul>
-              <li>Essaie chaque coup possible.</li>
-              <li>Appelle minimax pour le tour de MIN.</li>
-              <li>Garde le score maximum (MAX veut gagner).</li>
-            </ul>
-            <p>Si c'est le tour de MIN (is_max=False) :</p>
-            <ul>
-              <li>Essaie chaque coup possible.</li>
-              <li>Appelle minimax pour le tour de MAX.</li>
-              <li>Garde le score minimum (MIN veut empêcher MAX de gagner).</li>
-            </ul>
-          </div>
-          
-          <div className="algorithm-step">
-            <h4>best_move(board)</h4>
-            <p>Parcourt toutes les cases vides.</p>
-            <p>Utilise minimax pour calculer le score de chaque coup.</p>
-            <p>Retourne la meilleure case pour MAX.</p>
+
+            <div className="algorithm-step">
+              <h4>3. Fonction Min-Max (récursive)</h4>
+              <p>Fonction <code>minimax(plateau, joueur)</code> :</p>
+              <div className="code-block">
+                <pre>{`  résultat = check_gagnant(plateau)
+
+  // --- Cas de base ---
+  si résultat = "X" → retourner +1      // victoire MAX
+  si résultat = "O" → retourner -1      // victoire MIN
+  si résultat = "Match nul" → retourner 0
+
+  // --- Tour de MAX (X) ---
+  si joueur = "X":
+      meilleur_score = -∞
+      pour chaque case i vide dans plateau:
+          placer 'X' en i
+          score = minimax(plateau, "O")   // appel récursif pour MIN
+          annuler le coup (vider i)
+          meilleur_score = max(meilleur_score, score)
+      retourner meilleur_score
+
+  // --- Tour de MIN (O) ---
+  sinon si joueur = "O":
+      meilleur_score = +∞
+      pour chaque case i vide dans plateau:
+          placer 'O' en i
+          score = minimax(plateau, "X")   // appel récursif pour MAX
+          annuler le coup
+          meilleur_score = min(meilleur_score, score)
+      retourner meilleur_score`}</pre>
+              </div>
+            </div>
+
+            <div className="algorithm-step">
+              <h4>4. Fonction pour choisir le meilleur coup (pour X)</h4>
+              <p>Fonction <code>meilleur_coup(plateau)</code> :</p>
+              <div className="code-block">
+                <pre>{`  meilleur_score = -∞
+  coup_choisi = -1
+
+  pour chaque case i vide dans plateau:
+      placer 'X' en i
+      score = minimax(plateau, "O")   // simuler la suite
+      annuler le coup
+      si score > meilleur_score:
+          meilleur_score = score
+          coup_choisi = i
+
+  retourner coup_choisi`}</pre>
+              </div>
+            </div>
+
+            <div className="algorithm-step">
+              <h4>5. Exemple d'exécution (concret)</h4>
+              <p>Plateau initial :</p>
+              <div className="code-block">
+                <pre>{`  [ X , O , X ,
+    vide , O , vide ,
+    vide , vide , vide ]`}</pre>
+              </div>
+              <p>Indices vides : 3, 5, 6, 7, 8</p>
+              <p>Évaluations (résultats de minimax après simulation) :</p>
+              <ul>
+                <li>Essai coup en 3 → score = -1  (Mauvais : MIN peut forcer la victoire)</li>
+                <li>Essai coup en 5 → score = 0   (Au moins match nul)</li>
+                <li>Essai coup en 6 → score = -1</li>
+                <li>Essai coup en 7 → score = 0   (Au moins match nul)</li>
+                <li>Essai coup en 8 → score = -1</li>
+              </ul>
+              <p>Résultat : meilleur_coup retourne 5 ou 7 (score = 0). MAX choisit donc une case qui <strong>garantit au minimum le match nul</strong>.</p>
+            </div>
+
+            <div className="algorithm-step">
+              <h4>Explication pas à pas (comme Dijkstra)</h4>
+              <ol>
+                <li>Initialiser : tester si l'état courant est terminal (victoire/défaite/nul).</li>
+                <li>Explorer : pour chaque coup possible, simuler le coup puis appeler minimax récursivement.</li>
+                <li>Si c'est le niveau MAX → choisir le maximum des scores retournés.</li>
+                <li>Si c'est le niveau MIN → choisir le minimum (MIN minimise la réussite de MAX).</li>
+                <li>Backtrack : après chaque simulation, annuler le coup pour tester le suivant.</li>
+                <li>Répéter : continuer jusqu'à états terminaux (feuilles de l'arbre).</li>
+                <li>Résultat : meilleur_coup renvoie l'indice qui maximise la valeur pour MAX (&gt;0 bon pour X, 0 = nul, &lt;0 mauvais).</li>
+              </ol>
+            </div>
           </div>
         </div>
       )}
@@ -224,31 +391,49 @@ function App() {
       
       {showComplexity && (
         <div className="complexity-details">
-          <h3>📊 Complexité Algorithmique de Min-Max</h3>
-          
           <div className="complexity-section">
-            <h4>🟢 Arbre Min-Max (schéma simplifié)</h4>
+            <h4>🔢 Exemple : Arbre Min-Max avec valeurs croissantes</h4>
             <div className="tree-diagram">
               <pre>{`
-                  [MAX]
-                /   |   \\
-              b=3  b=3  b=3      <-- niveau 0 (racine, depth=0)
-             /|\\   /|\\   /|\\
-          [MIN][MIN][MIN] ...     <-- niveau 1 (depth=1)
-           /|\\   /|\\   /|\\
-         b=3  b=3 ...              <-- niveau 2 (depth=2)
-        ...
+                    [MAX]                <-- Niveau 0, depth=0
+                   /   |   \\
+                 /     |     \\
+             [MIN]    [MIN]    [MIN]    <-- Niveau 1, depth=1
+           /  |  \\  /  |  \\  /  |  \\
+         1   2   3  4   5   6  7   8   9  <-- Feuilles (niveau 2, depth=2)
               `}</pre>
             </div>
             
-            <div className="complexity-legend">
-              <h5>Légende :</h5>
+            <div className="complexity-step-by-step">
+              <h5>🔹 Explication étape par étape</h5>
               <ul>
-                <li><strong>Nœud</strong> = état du jeu (plateau)</li>
-                <li><strong>MAX</strong> = joueur qui veut maximiser le score</li>
-                <li><strong>MIN</strong> = joueur qui veut minimiser le score</li>
-                <li><strong>b</strong> = branching factor → nombre de coups possibles par nœud</li>
-                <li><strong>d</strong> = profondeur de l'arbre → nombre de tours jusqu'à la fin du jeu</li>
+                <li><strong>Feuilles</strong> : ce sont les scores finaux pour MAX si le jeu arrive à ces états.</li>
+                <li>On a mis des valeurs croissantes de 1 à 9 pour que ce soit clair.</li>
+                <li><strong>Niveau MIN</strong> : chaque MIN va choisir le minimum parmi ses enfants.
+                  <ul>
+                    <li>MIN gauche → min(1,2,3) = 1</li>
+                    <li>MIN du milieu → min(4,5,6) = 4</li>
+                    <li>MIN droite → min(7,8,9) = 7</li>
+                  </ul>
+                </li>
+                <li><strong>Niveau MAX (racine)</strong> : MAX choisit le maximum parmi les valeurs remontées par MIN.
+                  <ul>
+                    <li>MAX → max(1,4,7) = 7</li>
+                  </ul>
+                </li>
+                <li>Donc le meilleur coup pour MAX correspond au nœud droit.</li>
+              </ul>
+            </div>
+            
+            <div className="complexity-legend">
+              <h5>🔹 Légende</h5>
+              <ul>
+                <li><strong>Nœud</strong> = état du jeu (plateau).</li>
+                <li><strong>MAX</strong> = joueur qui veut maximiser le score.</li>
+                <li><strong>MIN</strong> = joueur qui veut minimiser le score.</li>
+                <li><strong>b</strong> = branching factor → nombre de coups possibles par nœud.</li>
+                <li><strong>d</strong> = profondeur de l'arbre → nombre de tours jusqu'à la fin.</li>
+                <li><strong>Feuilles</strong> = score final du plateau.</li>
               </ul>
             </div>
           </div>
@@ -285,44 +470,116 @@ function App() {
     <div className="explanation">
       <h2>🧠 Algorithme Min-Max avec Élagage Alpha-Bêta</h2>
       
+      <div className="minimax-definition">
+        <h3>✅ Définition de l'algorithme Min-Max</h3>
+        <p>
+          L'algorithme Min-Max est une méthode de décision utilisée dans les jeux à deux joueurs 
+          (parfaitement déterministes, sans hasard, et à somme nulle).
+        </p>
+        
+        <p>
+          Un joueur est appelé <strong>Max</strong> (il cherche à maximiser le score).<br />
+          L'autre est appelé <strong>Min</strong> (il cherche à minimiser le score).
+        </p>
+        
+        <p>
+          L'algorithme explore l'arbre de jeu en simulant tous les coups possibles des deux joueurs, 
+          jusqu'aux positions finales (ou jusqu'à une profondeur donnée).
+        </p>
+        
+        <p>
+          Ensuite, il attribue une valeur à chaque position finale (victoire, défaite, nul).<br />
+          Enfin, en remontant l'arbre, chaque joueur choisit le meilleur coup pour lui :
+        </p>
+        
+        <ul>
+          <li><strong>Max</strong> prend le maximum des valeurs disponibles.</li>
+          <li><strong>Min</strong> prend le minimum des valeurs disponibles.</li>
+        </ul>
+        
+        <p>👉 Le résultat est le coup optimal pour le joueur courant, en supposant que les deux jouent parfaitement.</p>
+        
+        <h4>✅ Utilisation du Min-Max</h4>
+        <p>L'algorithme Min-Max est utilisé dans :</p>
+        
+        <h5>Les jeux de stratégie à deux joueurs :</h5>
+        <ul>
+          <li>Morpion (Tic-Tac-Toe)</li>
+          <li>Puissance 4</li>
+          <li>Dames</li>
+          <li>Échecs (avec optimisations et heuristiques)</li>
+          <li>Othello/Reversi</li>
+        </ul>
+        
+        <h5>L'intelligence artificielle :</h5>
+        <p>Pour créer une IA capable de prendre des décisions rationnelles face à un adversaire.</p>
+        
+        <h5>La théorie des jeux :</h5>
+        <p>Pour analyser des stratégies optimales dans des situations compétitives à somme nulle.</p>
+        
+        <h4>📌 Exemple concret :</h4>
+        <p>
+          Dans le morpion, si c'est au tour de l'IA (joueur O), elle utilise Min-Max pour :
+        </p>
+        <ol>
+          <li>Simuler tous ses coups possibles,</li>
+          <li>Simuler les réponses de l'adversaire (X),</li>
+          <li>Puis choisir le coup qui maximise ses chances de gagner ou au pire d'aboutir à un match nul.</li>
+        </ol>
+      </div>
+
       <div className="algorithm-steps">
         <div className="step">
-          <div className="step-number">1</div>
+          <div className="step-number">🔍</div>
           <div className="step-content">
-            <h3>Exploration de l'arbre de jeu</h3>
-            <p>L'algorithme explore tous les coups possibles jusqu'à une certaine profondeur ou jusqu'à la fin du jeu.</p>
+            <h3>1. Exploration de l'arbre de jeu</h3>
+            <p>L'algorithme explore récursivement tous les coups possibles à partir de la position actuelle, créant un "arbre" des possibilités. Chaque nœud représente un état du jeu, et chaque branche représente un coup possible.</p>
+            <p className="step-importance"><strong>Pourquoi c'est important :</strong> Sans cette exploration exhaustive, l'IA ne pourrait pas anticiper les conséquences de ses choix.</p>
           </div>
         </div>
         
         <div className="step">
-          <div className="step-number">2</div>
+          <div className="step-number">📊</div>
           <div className="step-content">
-            <h3>Évaluation des positions</h3>
-            <p>Chaque position finale est évaluée : +1 pour une victoire de l'IA, -1 pour une défaite, 0 pour un match nul.</p>
+            <h3>2. Évaluation des positions</h3>
+            <p>À chaque position terminale (fin de jeu ou limite de profondeur), l'algorithme attribue une valeur :</p>
+            <ul>
+              <li><strong>+1</strong> : Victoire de l'IA (favorable)</li>
+              <li><strong>-1</strong> : Victoire du joueur (défavorable)</li>
+              <li><strong>0</strong> : Match nul (neutre)</li>
+            </ul>
+            <p className="step-importance"><strong>Pourquoi c'est important :</strong> Ces valeurs quantifient le résultat de chaque séquence de coups, permettant des comparaisons objectives.</p>
           </div>
         </div>
         
         <div className="step">
-          <div className="step-number">3</div>
+          <div className="step-number">🔄</div>
           <div className="step-content">
-            <h3>Propagation des valeurs</h3>
-            <p>Les valeurs remontent l'arbre : l'IA maximise son score (Max), le joueur minimise le score de l'IA (Min).</p>
+            <h3>3. Propagation des valeurs</h3>
+            <p>Les valeurs remontent l'arbre de décision :</p>
+            <ul>
+              <li>Aux niveaux <strong>Max</strong> (tour de l'IA) : sélection de la valeur maximale</li>
+              <li>Aux niveaux <strong>Min</strong> (tour du joueur) : sélection de la valeur minimale</li>
+            </ul>
+            <p className="step-importance"><strong>Pourquoi c'est important :</strong> Cela simule le comportement rationnel des two joueurs - l'IA cherche à maximiser son avantage tandis que le joueur cherche à le minimiser.</p>
           </div>
         </div>
         
         <div className="step">
-          <div className="step-number">4</div>
+          <div className="step-number">✂️</div>
           <div className="step-content">
-            <h3>Élagage Alpha-Bêta</h3>
-            <p>Les branches inutiles sont élaguées pour optimiser le processus sans affecter le résultat final.</p>
+            <h3>4. Élagage Alpha-Bêta</h3>
+            <p>Technique d'optimisation qui permet d'éliminer les branches de l'arbre qui ne peuvent pas influencer le résultat final, réduisant ainsi le nombre de positions à évaluer.</p>
+            <p className="step-importance"><strong>Pourquoi c'est important :</strong> Sans élagage, l'algorithme serait trop lent pour être utilisable, surtout pour des jeux complexes.</p>
           </div>
         </div>
         
         <div className="step">
-          <div className="step-number">5</div>
+          <div className="step-number">🎯</div>
           <div className="step-content">
-            <h3>Sélection du meilleur coup</h3>
-            <p>L'IA choisit le coup qui mène à la position avec le score le plus élevé après l'évaluation complète.</p>
+            <h3>5. Sélection du meilleur coup</h3>
+            <p>Après l'évaluation complète, l'IA choisit le coup qui mène à la position avec le score le plus élevé, en supposant que le joueur adverse joue de façon optimale.</p>
+            <p className="step-importance"><strong>Pourquoi c'est important :</strong> C'est le résultat concret de tout le processus - la décision que l'IA va réellement prendre.</p>
           </div>
         </div>
       </div>
@@ -385,6 +642,21 @@ function App() {
         </div>
       ) : (
         <p className="no-process">L'IA n'est pas en train de réfléchir pour le moment</p>
+      )}
+      
+      {minimaxIterations.length > 0 && (
+        <div className="minimax-iterations">
+          <h4>Détails de l'algorithme Minimax</h4>
+          <div className="iterations-toggle">
+            <button 
+              onClick={() => setShowIterations(!showIterations)}
+              className="toggle-btn"
+            >
+              {showIterations ? 'Masquer les itérations' : 'Afficher les itérations détaillées'}
+            </button>
+          </div>
+          {showIterations && renderIterations()}
+        </div>
       )}
     </div>
   );
